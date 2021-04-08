@@ -11,7 +11,7 @@
 npm i
 ```
 
-2 - Get your vercel token at https://vercel.com/account/tokens, copy `.env.sample` as `.env` and update the values.
+2 - Get your Vercel token at https://vercel.com/account/tokens, copy `.env.sample` as `.env` and update the value:
 
 ```
 VERCEL_TOKEN = ""
