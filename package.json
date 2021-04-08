@@ -1,0 +1,19 @@
+{
+  "name": "get-vercel-sourcecode",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chalk": "^4.1.0",
+    "dotenv": "^8.2.0",
+    "download": "^8.0.0",
+    "got": "^8.3.2",
+    "node-fetch": "^2.6.1",
+    "ora": "^5.4.0"
+  }
+}
