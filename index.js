@@ -1,96 +1,111 @@
-const fs = require('fs');
-const got = require('got');
-const download = require('download');
-const chalk = require('chalk');
-const ora = require('ora');
-require('dotenv').config()
-
-let VERCEL_TOKEN = ""
-let VERCEL_URL = ""
-let DESTDIR = ""
-
-const fileTree = [];
+import "dotenv/config";
+import * as fs from "fs";
+import got from "got";
+import chalk from "chalk";
+import { oraPromise } from "ora";
 
 const error = chalk.bold.red;
-const success = chalk.keyword('green');
 
-function main() {
-     VERCEL_TOKEN = process.env.VERCEL_TOKEN
-	 VERCEL_URL = process.argv[2]
-     DESTDIR = process.argv[3] || VERCEL_URL
+const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
+const VERCEL_DEPLOYMENT = process.argv[2];
+const DESTDIR = process.argv[3] || VERCEL_DEPLOYMENT;
+const VERCEL_TEAM = process.env.VERCEL_TEAM;
 
-	if (VERCEL_TOKEN === undefined || VERCEL_TOKEN === "") {
-		console.log(error("Please add your Vercel Token in .env file. \n\nLook at Readme for more informations"))
-		return
-	}
-
-    if (VERCEL_URL === undefined || VERCEL_URL === "") {
-		console.log(error("Please pass the Vercel URL:"))
-        console.log("\ne.g: node index.js brazilianswhodesign-5ik51k4n7.vercel.app")
-		return
-	}
-
-	getSourceCode()
+try {
+  if (VERCEL_TOKEN === undefined) {
+    console.log(
+      error(
+        "Missing VERCEL_TOKEN in .env file. \n\nLook at README for more information"
+      )
+    );
+  } else if (VERCEL_DEPLOYMENT === undefined) {
+    console.log(error("Missing deployment URL or id"));
+    console.log(
+      "\ne.g: node index.js example-5ik51k4n7.vercel.app",
+      "\ne.g: node index.js dpl_6CR1uw9hBdpWgrMvPkncsTGRC18A"
+    );
+  } else {
+    await main();
+  }
+} catch (err) {
+  console.log(error(err.stack || err));
 }
 
-main()
-
-async function getSourceCode() {
-   const spinner = ora('Loading file tree').start();
-   await getFileTree("src/")
-   
-   for (let i = 0; i < fileTree.length; i++) {
-       const f = fileTree[i];
-
-       if (f.type == "directory") { 
-            await getFileTree(`${f.name}`)
-       }
-
-       if (f.type == "file") {
-         spinner.text = `Downloading ${f.name}`;
-         await downloadFile(f.link, f.dir)
-       }
-   }
-
-   spinner.stop()
-   console.log(success("Source code downloaded. ✨"))
-}
-
-async function downloadFile(url, dir) { 
-    let filename = url.split("/").pop()
-    let path = `${DESTDIR}${dir}`
-
-    if (fs.existsSync(`${path}/${filename}}`)) {
-        return
+async function main() {
+  const deploymentId = VERCEL_DEPLOYMENT.startsWith("dpl_")
+    ? VERCEL_DEPLOYMENT
+    : await oraPromise(
+        getDeploymentId(VERCEL_DEPLOYMENT),
+        "Getting deployment id"
+      );
+  const srcFiles = await oraPromise(
+    getDeploymentSource(deploymentId),
+    "Loading source files tree"
+  );
+  // Download files one by one
+  if (!fs.existsSync(DESTDIR)) fs.mkdirSync(DESTDIR);
+  for (const file of srcFiles) {
+    let pathname = file.name.replace("src", DESTDIR);
+    if (fs.existsSync(pathname)) continue;
+    if (file.type === "directory") fs.mkdirSync(pathname);
+    if (file.type === "file") {
+      await oraPromise(
+        downloadFile(deploymentId, file.uid, pathname),
+        `Downloading ${pathname}`
+      );
     }
- 
-    await download(url, path, {
-        headers: {
-    		'Authorization': `Bearer ${VERCEL_TOKEN}`,
-    	} 
-    })
+  }
 }
 
+async function getDeploymentSource(id) {
+  let path = `/v6/deployments/${id}/files`;
+  if (VERCEL_TEAM) path += `?teamId=${VERCEL_TEAM}`;
+  const files = await getJSONFromAPI(path);
+  // Get only src directory
+  const source = files.find((x) => x.name === "src");
+  // Flatten tree structure to list of files/dirs for easier downloading
+  return flattenTree(source);
+}
 
-async function getFileTree(dir) { 
-    const response = await got(`https://vercel.com/api/now/file-tree/${VERCEL_URL}?base=${dir}`, { 
-    	headers: {
-    		'Authorization': `Bearer ${VERCEL_TOKEN}`,
-    	} 
+async function getDeploymentId(domain) {
+  const deployment = await getJSONFromAPI(`/v13/deployments/${domain}`);
+  return deployment.id;
+}
+
+async function downloadFile(deploymentId, fileId, destination) {
+  let path = `/v6/deployments/${deploymentId}/files/${fileId}`;
+  if (VERCEL_TEAM) path += `?teamId=${VERCEL_TEAM}`;
+  const response = await getFromAPI(path);
+  return new Promise((resolve, reject) => {
+    fs.writeFile(destination, response.body, function (err) {
+      if (err) reject(err);
+      resolve();
     });
+  });
+}
 
-    const result = JSON.parse(response.body)
-    const tree = result.map((f) => { 
-        if (f.type == "directory") { 
-            f.name = `${dir}${f.name}/` 
-        }
+function getFromAPI(path) {
+  return got(`https://api.vercel.com${path}`, {
+    headers: {
+      Authorization: `Bearer ${VERCEL_TOKEN}`,
+    },
+    retry: {
+      limit: 0,
+    },
+  });
+}
 
-        if (f.type == "file") { 
-            f.dir = `${dir.replace('src/', '/')}`
-        }
-        
-        return f
-    })
+function getJSONFromAPI(path) {
+  return getFromAPI(path).json();
+}
 
-    fileTree.push(...tree)
+function flattenTree({ name, children = [] }) {
+  let childrenNamed = children.map((child) => ({
+    ...child,
+    name: `${name}/${child.name}`,
+  }));
+  return Array.prototype.concat.apply(
+    childrenNamed,
+    childrenNamed.map(flattenTree)
+  );
 }
