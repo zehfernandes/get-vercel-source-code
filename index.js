@@ -42,19 +42,22 @@ async function main() {
     getDeploymentSource(deploymentId),
     "Loading source files tree"
   );
-  // Download files one by one
   if (!fs.existsSync(DESTDIR)) fs.mkdirSync(DESTDIR);
-  for (const file of srcFiles) {
-    let pathname = file.name.replace("src", DESTDIR);
-    if (fs.existsSync(pathname)) continue;
-    if (file.type === "directory") fs.mkdirSync(pathname);
-    if (file.type === "file") {
-      await oraPromise(
-        downloadFile(deploymentId, file.uid, pathname),
-        `Downloading ${pathname}`
-      );
-    }
-  }
+  Promise.allSettled(
+    srcFiles
+      .map((file) => {
+        let pathname = file.name.replace("src", DESTDIR);
+        if (fs.existsSync(pathname)) return null;
+        if (file.type === "directory") fs.mkdirSync(pathname);
+        if (file.type === "file") {
+          return oraPromise(
+            downloadFile(deploymentId, file.uid, pathname),
+            `Downloading ${pathname}`
+          );
+        }
+      })
+      .filter(Boolean)
+  );
 }
 
 async function getDeploymentSource(id) {
