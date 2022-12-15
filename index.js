@@ -3,10 +3,6 @@ import * as fs from "fs";
 import got from "got";
 import chalk from "chalk";
 import { oraPromise } from "ora";
-import { promisify } from 'node:util';
-import stream from 'node:stream';
-
-const pipeline = promisify(stream.pipeline);
 
 const error = chalk.bold.red;
 
