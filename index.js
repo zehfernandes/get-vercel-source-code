@@ -3,6 +3,10 @@ import * as fs from "fs";
 import got from "got";
 import chalk from "chalk";
 import { oraPromise } from "ora";
+import { promisify } from 'node:util';
+import stream from 'node:stream';
+
+const pipeline = promisify(stream.pipeline);
 
 const error = chalk.bold.red;
 
@@ -35,9 +39,9 @@ async function main() {
   const deploymentId = VERCEL_DEPLOYMENT.startsWith("dpl_")
     ? VERCEL_DEPLOYMENT
     : await oraPromise(
-        getDeploymentId(VERCEL_DEPLOYMENT),
-        "Getting deployment id"
-      );
+      getDeploymentId(VERCEL_DEPLOYMENT),
+      "Getting deployment id"
+    );
   const srcFiles = await oraPromise(
     getDeploymentSource(deploymentId),
     "Loading source files tree"
@@ -78,17 +82,18 @@ async function getDeploymentId(domain) {
 async function downloadFile(deploymentId, fileId, destination) {
   let path = `/v6/deployments/${deploymentId}/files/${fileId}`;
   if (VERCEL_TEAM) path += `?teamId=${VERCEL_TEAM}`;
-  const response = await getFromAPI(path);
+  const response = await getFromAPI(path, true);
   return new Promise((resolve, reject) => {
-    fs.writeFile(destination, response.body, function (err) {
-      if (err) reject(err);
-      resolve();
-    });
+    const writeStream = fs.createWriteStream(destination);
+    response.pipe(writeStream);
+    response.on('error', reject);
+    writeStream.on('error', reject);
+    writeStream.on("finish", resolve);
   });
 }
 
-function getFromAPI(path) {
-  return got(`https://api.vercel.com${path}`, {
+function getFromAPI(path, binary = false) {
+  return (binary ? got.stream : got)(`https://api.vercel.com${path}`, {
     headers: {
       Authorization: `Bearer ${VERCEL_TOKEN}`,
     },
