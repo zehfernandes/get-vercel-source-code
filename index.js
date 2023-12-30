@@ -76,11 +76,15 @@ async function getDeploymentId(domain) {
 }
 
 async function downloadFile(deploymentId, fileId, destination) {
-  let path = `/v6/deployments/${deploymentId}/files/${fileId}`;
+  let path = `/v7/deployments/${deploymentId}/files/${fileId}`;
   if (VERCEL_TEAM) path += `?teamId=${VERCEL_TEAM}`;
   const response = await getFromAPI(path);
   return new Promise((resolve, reject) => {
-    fs.writeFile(destination, response.body, function (err) {
+    // Assuming response.body contains the base64 encoded data
+    const encodedValue = JSON.parse(response.body).data;
+    const decodedValue = Buffer.from(encodedValue, 'base64'); // Decode base64 to binary buffer
+
+    fs.writeFile(destination, decodedValue, function (err) {
       if (err) reject(err);
       resolve();
     });
@@ -92,6 +96,7 @@ function getFromAPI(path) {
     headers: {
       Authorization: `Bearer ${VERCEL_TOKEN}`,
     },
+    responseType: 'buffer',
     retry: {
       limit: 0,
     },
