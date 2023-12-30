@@ -80,7 +80,6 @@ async function downloadFile(deploymentId, fileId, destination) {
   if (VERCEL_TEAM) path += `?teamId=${VERCEL_TEAM}`;
   const response = await getFromAPI(path);
   return new Promise((resolve, reject) => {
-    // Assuming response.body contains the base64 encoded data
     const encodedValue = JSON.parse(response.body).data;
     const decodedValue = Buffer.from(encodedValue, 'base64'); // Decode base64 to binary buffer
 
